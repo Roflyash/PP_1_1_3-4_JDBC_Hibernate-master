@@ -4,33 +4,33 @@ import jm.task.core.jdbc.model.User;
 import jm.task.core.jdbc.util.Util;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
-import org.hibernate.query.NativeQuery;
 import org.hibernate.SessionFactory;
 
 import java.util.List;
 
 public class UserDaoHibernateImpl implements UserDao {
-    private final SessionFactory sessionFactory = Util.getSessionFactory();
+    private final SessionFactory sessionFactory;
+
+    public UserDaoHibernateImpl() {
+        this.sessionFactory = Util.getSessionFactory();
+    }
 
     @Override
     public void createUsersTable() {
         Transaction transaction = null;
         try (Session session = sessionFactory.openSession()) {
             transaction = session.beginTransaction();
-            NativeQuery<?> query = session.createNativeQuery(
+            session.createNativeQuery(
                     "CREATE TABLE IF NOT EXISTS users (" +
                             "id BIGINT PRIMARY KEY AUTO_INCREMENT, " +
-                            "name VARCHAR(255), " +
-                            "lastName VARCHAR(255), " +
-                            "age TINYINT)"
-            );
-            query.executeUpdate();
+                            "name VARCHAR(255) NOT NULL, " +
+                            "lastName VARCHAR(255) NOT NULL, " +
+                            "age TINYINT NOT NULL)"
+            ).executeUpdate();
             transaction.commit();
         } catch (Exception e) {
-            if (transaction != null) {
-                transaction.rollback();
-            }
-            e.printStackTrace();
+            rollbackTransaction(transaction);
+            throw new RuntimeException("Не удалось создать таблицу пользователей", e);
         }
     }
 
@@ -39,14 +39,11 @@ public class UserDaoHibernateImpl implements UserDao {
         Transaction transaction = null;
         try (Session session = sessionFactory.openSession()) {
             transaction = session.beginTransaction();
-            NativeQuery<?> query = session.createNativeQuery("DROP TABLE IF EXISTS users");
-            query.executeUpdate();
+            session.createNativeQuery("DROP TABLE IF EXISTS users").executeUpdate();
             transaction.commit();
         } catch (Exception e) {
-            if (transaction != null) {
-                transaction.rollback();
-            }
-            e.printStackTrace();
+            rollbackTransaction(transaction);
+            throw new RuntimeException("Не удалось удалить таблицу пользователей", e);
         }
     }
 
@@ -55,15 +52,11 @@ public class UserDaoHibernateImpl implements UserDao {
         Transaction transaction = null;
         try (Session session = sessionFactory.openSession()) {
             transaction = session.beginTransaction();
-            User user = new User(name, lastName, age);
-            session.save(user);
+            session.persist(new User(name, lastName, age));
             transaction.commit();
-            System.out.println("User с именем – " + name + " добавлен в базу данных");
         } catch (Exception e) {
-            if (transaction != null) {
-                transaction.rollback();
-            }
-            e.printStackTrace();
+            rollbackTransaction(transaction);
+            throw new RuntimeException("Не удалось сохранить пользователя", e);
         }
     }
 
@@ -74,24 +67,21 @@ public class UserDaoHibernateImpl implements UserDao {
             transaction = session.beginTransaction();
             User user = session.get(User.class, id);
             if (user != null) {
-                session.delete(user);
+                session.remove(user);
             }
             transaction.commit();
         } catch (Exception e) {
-            if (transaction != null) {
-                transaction.rollback();
-            }
-            e.printStackTrace();
+            rollbackTransaction(transaction);
+            throw new RuntimeException("Не удалось удалить пользователя по id: " + id, e);
         }
     }
 
     @Override
     public List<User> getAllUsers() {
         try (Session session = sessionFactory.openSession()) {
-            return session.createQuery("from User", User.class).list();
+            return session.createQuery("FROM User", User.class).getResultList();
         } catch (Exception e) {
-            e.printStackTrace();
-            return List.of();
+            throw new RuntimeException("Не удалось получить доступ ко всем пользователям", e);
         }
     }
 
@@ -100,14 +90,17 @@ public class UserDaoHibernateImpl implements UserDao {
         Transaction transaction = null;
         try (Session session = sessionFactory.openSession()) {
             transaction = session.beginTransaction();
-            NativeQuery<?> query = session.createNativeQuery("TRUNCATE TABLE users");
-            query.executeUpdate();
+            session.createNativeQuery("TRUNCATE TABLE users").executeUpdate();
             transaction.commit();
         } catch (Exception e) {
-            if (transaction != null) {
-                transaction.rollback();
-            }
-            e.printStackTrace();
+            rollbackTransaction(transaction);
+            throw new RuntimeException("Не удалось очистить таблицу пользователей", e);
+        }
+    }
+
+    private void rollbackTransaction(Transaction transaction) {
+        if (transaction != null && transaction.isActive()) {
+            transaction.rollback();
         }
     }
 }
